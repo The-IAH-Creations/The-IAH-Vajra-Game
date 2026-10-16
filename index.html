@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The IAH Vajra: Open-World Mystery Adventure</title>
+    <!-- Tailwind CSS for Modern UI Overlay -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library for 3D Physics and Rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #020208; color: #fff; }
+        .cinematic-font { font-family: 'Cinzel', serif; }
+        #game-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        
+        /* Cinematic Vignette Overlay */
+        .cinematic-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5;
+            background: radial-gradient(circle, rgba(0,0,0,0) 40%, rgba(2,2,8,0.7) 100%);
+            box-shadow: inset 0 0 100px rgba(0, 255, 204, 0.05);
+        }
+
+        /* HUD Styling */
+        #hud {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 25px; z-index: 10;
+        }
+        .hud-panel {
+            background: rgba(8, 10, 24, 0.88); border: 1px solid rgba(0, 255, 204, 0.4);
+            padding: 16px 24px; border-radius: 12px; backdrop-filter: blur(12px); pointer-events: auto;
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.15);
+        }
+
+        /* Crosshair */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 16px; height: 16px; border: 2px solid rgba(0, 255, 204, 0.8); border-radius: 50%; pointer-events: none; z-index: 10;
+            transition: transform 0.1s ease;
+        }
+        #crosshair::after {
+            content: ''; position: absolute; top: 5px; left: 5px; width: 2px; height: 2px; background: #00ffcc;
+        }
+
+        /* Screens & Modals */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 4, 12, 0.96);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; padding: 30px;
+        }
+        .btn-cinematic {
+            background: linear-gradient(135deg, #00ffcc, #0077ff); color: #020208; border: none; padding: 16px 45px;
+            font-size: 1.2rem; font-weight: bold; border-radius: 8px; cursor: pointer; text-transform: uppercase;
+            letter-spacing: 2px; transition: all 0.3s ease; box-shadow: 0 0 30px rgba(0, 255, 204, 0.4);
+        }
+        .btn-cinematic:hover { transform: scale(1.05); box-shadow: 0 0 45px rgba(0, 255, 204, 0.8); background: #66ffea; }
+
+        #custom-modal {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 440px;
+            background: rgba(10, 13, 30, 0.96); border: 1px solid #00ffcc; border-radius: 16px; padding: 30px;
+            z-index: 200; display: none; text-align: center; box-shadow: 0 0 50px rgba(0, 255, 204, 0.3); backdrop-filter: blur(15px);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-menu" class="screen">
+        <h1 class="cinematic-font text-5xl md:text-7xl font-extrabold text-teal-400 mb-6 tracking-widest drop-shadow-[0_0_35px_rgba(0,255,204,0.6)]">THE IAH VAJRA</h1>
+        <h2 class="cinematic-font text-xl md:text-2xl text-blue-300 mb-6 tracking-wider">Open-World Mystery Adventure & Exploration</h2>
+        <p class="text-gray-300 max-w-2xl text-base md:text-lg mb-10 leading-relaxed">
+            Uncover ancient secrets across satellite-rendered monuments illuminated by a brilliant artificial sun. Wield animated divine weaponry with balanced sprint agility, collect relics, and solve celestial mysteries in a breathtaking open world.
+        </p>
+        <button class="btn-cinematic cinematic-font" onclick="initGameSession()">Begin Expedition</button>
+    </div>
+
+    <!-- 3D Game Canvas -->
+    <div id="game-container"></div>
+    <div class="cinematic-overlay"></div>
+
+    <div id="hud" style="display: none;">
+        <div class="flex justify-between items-start w-full">
+            <div class="hud-panel">
+                <h3 id="expedition-title" class="cinematic-font text-teal-400 text-lg mb-2 tracking-wider">The IAH Vajra: Expedition Recon</h3>
+                <p class="text-sm">Health: <span id="player-health" class="font-bold text-teal-300">100</span> / 100</p>
+                <p class="text-sm">Prana Energy: <span id="player-energy" class="font-bold text-yellow-400">100</span> / 100</p>
+                <p class="text-sm">Active Weapon: <span id="weapon-name" class="font-bold text-blue-400">The IAH Blade (1)</span></p>
+                <p class="text-sm">Sprint Status: <span id="sprint-status" class="font-bold text-purple-400">Normal (Hold Shift to Run)</span></p>
+            </div>
+            <div class="hud-panel text-right">
+                <h3 class="cinematic-font text-teal-400 text-sm tracking-wider">Expedition Intel</h3>
+                <p class="text-xs text-gray-300 mt-1">Artifacts Uncovered: <span id="relics-count" class="font-bold text-yellow-300">0</span> / 5</p>
+                <p class="text-xs text-gray-300">Mysteries Solved: <span id="mysteries-count" class="font-bold text-teal-300">0</span> / 3</p>
+            </div>
+        </div>
+        <div class="hud-panel mx-auto mb-2 text-center py-2 px-6">
+            <p class="text-xs text-gray-300">Controls: <b class="text-teal-300">WASD</b> Move | <b class="text-teal-300">Shift</b> Controlled Sprint | <b class="text-teal-300">Space</b> Jump | <b class="text-teal-300">Mouse</b> Look | <b class="text-teal-300">L-Click</b> Animated Sword Swing | <b class="text-teal-300">1,2,3</b> Weapon Select</p>
+        </div>
+    </div>
+
+    <!-- Crosshair -->
+    <div id="crosshair" style="display: none;"></div>
+
+    <!-- Custom Modal Dialog -->
+    <div id="custom-modal">
+        <h3 id="modal-title" class="cinematic-font text-2xl text-teal-400 mb-4">Expedition Log</h3>
+        <p id="modal-desc" class="text-gray-300 mb-6 text-sm leading-relaxed"></p>
+        <button class="btn-cinematic cinematic-font text-sm px-6 py-3" onclick="closeCustomModal()">Continue Exploration</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, isShiftPressed = false, canJump = false;
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        let prevTime = performance.now();
+
+        let gameState = {
+            health: 100,
+            energy: 100,
+            relics: 0,
+            mysteries: 0,
+            currentWeapon: 1, // 1: Sword, 2: Chakram, 3: Laser
+            isGameOver: false
+        };
+
+        let relics = [], mysteries = [], enemies = [], audioCtx = null;
+        let weaponMeshes = {}, activeWeaponGroup;
+        let isAttacking = false, attackAnimTimer = 0;
+
+        function initAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                playCinematicDrone();
+            } catch (e) {
+                console.log("Audio context restricted.");
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'sword') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.exponentialRampToValueAtTime(140, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'relic') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(880, now + 0.15);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'mystery') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(380, now);
+                osc.frequency.linearRampToValueAtTime(920, now + 0.4);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+        }
+
+        function playCinematicDrone() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(65, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+        }
+
+        function initGameSession() {
+            document.getElementById('main-menu').style.display = 'none';
+            document.getElementById('hud').style.display = 'flex';
+            document.getElementById('crosshair').style.display = 'block';
+
+            initAudio();
+            initThreeWorld();
+            initControls();
+
+            document.body.requestPointerLock();
+        }
+
+        function initThreeWorld() {
+            const container = document.getElementById('game-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x060818);
+            scene.fog = new THREE.FogExp2(0x060818, 0.005);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 2.5, 15);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Rich Lighting & Brilliant Artificial Sun for Absolute Open-World Visibility
+            const ambientLight = new THREE.AmbientLight(0x405599, 0.9);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffae6, 2.0);
+            sunLight.position.set(250, 400, 200);
+            sunLight.castShadow = true;
+            scene.add(sunLight);
+
+            const sunHemisphere = new THREE.HemisphereLight(0x00ffcc, 0x111b44, 0.8);
+            scene.add(sunHemisphere);
+
+            // Artificial Sun Sphere with Glowing Light Source
+            const sunGeo = new THREE.SphereGeometry(25, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff0aa });
+            const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+            sunMesh.position.set(300, 500, 250);
+            scene.add(sunMesh);
+
+            const sunPointLight = new THREE.PointLight(0xfff0aa, 3, 1200);
+            sunPointLight.position.set(300, 500, 250);
+            scene.add(sunPointLight);
+
+            // Ground Floor (Vedic Sacred Grid)
+            const floorGeo = new THREE.PlaneGeometry(600, 600, 64, 64);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x0c122c, roughness: 0.7, metalness: 0.3 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            createWorldMonuments();
+
+            // Weapon attachment to camera
+            activeWeaponGroup = new THREE.Group();
+            camera.add(activeWeaponGroup);
+            scene.add(camera);
+
+            buildWeapons();
+            switchWeapon(1);
+
+            spawnExplorationCollectibles();
+            spawnMysteryAnomalies();
+            spawnExplorationGuards(8);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function createWorldMonuments() {
+            // Monument 1: Ellora Kailash Monolith
+            const kailashGroup = new THREE.Group();
+            const baseGeo = new THREE.BoxGeometry(22, 28, 22);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x181d3b, roughness: 0.6, metalness: 0.4 });
+            const base = new THREE.Mesh(baseGeo, mat);
+            base.position.y = 14;
+            kailashGroup.add(base);
+            
+            const spireGeo = new THREE.ConeGeometry(5, 22, 4);
+            const spireMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 0.8 });
+            const spire = new THREE.Mesh(spireGeo, spireMat);
+            spire.position.y = 38;
+            kailashGroup.add(spire);
+            kailashGroup.position.set(-120, 0, -160);
+            scene.add(kailashGroup);
+
+            // Monument 2: Angkor Wat Temple Towers
+            for (let i = 0; i < 4; i++) {
+                const towerGroup = new THREE.Group();
+                const tGeo = new THREE.CylinderGeometry(4, 6, 35, 6);
+                const tMesh = new THREE.Mesh(tGeo, mat);
+                tMesh.position.y = 17.5;
+                towerGroup.add(tMesh);
+                towerGroup.position.set(100 + (i * 22), 0, -140 - ((i % 2) * 30));
+                scene.add(towerGroup);
+            }
+
+            // Monument 3: Giza Sci-Fi Pyramids
+            const pyramidGeo = new THREE.ConeGeometry(30, 35, 4);
+            const pyramidMat = new THREE.MeshStandardMaterial({ color: 0x222952, roughness: 0.5, metalness: 0.6 });
+            const pyramid = new THREE.Mesh(pyramidGeo, pyramidMat);
+            pyramid.position.set(-140, 17.5, 110);
+            scene.add(pyramid);
+        }
+
+        function buildWeapons() {
+            // Weapon 1: Animated The IAH Sword
+            const swordGroup = new THREE.Group();
+            const bladeGeo = new THREE.BoxGeometry(0.12, 2.2, 0.04);
+            const bladeMat = new THREE.MeshStandardMaterial({ color: 0x66ffea, emissive: 0x00ffcc, emissiveIntensity: 0.8, metalness: 0.9 });
+            const blade = new THREE.Mesh(bladeGeo, bladeMat);
+            blade.position.set(0, 1.1, 0);
+            swordGroup.add(blade);
+            
+            const hiltGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8);
+            const hiltMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8 });
+            const hilt = new THREE.Mesh(hiltGeo, hiltMat);
+            hilt.position.set(0, -0.1, 0);
+            swordGroup.add(hilt);
+            
+            swordGroup.position.set(0.6, -0.5, -0.9);
+            swordGroup.rotation.x = Math.PI / 6;
+            weaponMeshes[1] = swordGroup;
+
+            // Weapon 2: Chakram
+            const chakramGroup = new THREE.Group();
+            const ringGeo = new THREE.TorusGeometry(0.4, 0.08, 12, 24);
+            const ringMat = new THREE.MeshStandardMaterial({ color: 0xff8c00, emissive: 0xff5500, emissiveIntensity: 0.8, metalness: 0.8 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            chakramGroup.add(ring);
+            chakramGroup.position.set(0.5, -0.4, -0.9);
+            weaponMeshes[2] = chakramGroup;
+
+            // Weapon 3: Prana Laser
+            const laserGroup = new THREE.Group();
+            const barrelGeo = new THREE.CylinderGeometry(0.06, 0.1, 1.8, 8);
+            const barrelMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.9, roughness: 0.2 });
+            const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0, -0.4);
+            laserGroup.add(barrel);
+            laserGroup.position.set(0.5, -0.45, -0.9);
+            weaponMeshes[3] = laserGroup;
+        }
+
+        function switchWeapon(id) {
+            gameState.currentWeapon = id;
+            while(activeWeaponGroup.children.length > 0) {
+                activeWeaponGroup.remove(activeWeaponGroup.children[0]);
+            }
+            activeWeaponGroup.add(weaponMeshes[id]);
+
+            const names = { 1: "The IAH Blade (1)", 2: "Chakram Launcher (2)", 3: "Prana Laser (3)" };
+            document.getElementById('weapon-name').innerText = names[id];
+        }
+
+        function spawnExplorationCollectibles() {
+            for (let i = 0; i < 5; i++) {
+                const relicGeo = new THREE.IcosahedronGeometry(1.2);
+                const relicMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.8, metalness: 0.9 });
+                const relic = new THREE.Mesh(relicGeo, relicMat);
+                relic.position.set((Math.random() - 0.5) * 160, 1.5, (Math.random() - 0.5) * 160);
+                scene.add(relic);
+                relics.push(relic);
+            }
+        }
+
+        function spawnMysteryAnomalies() {
+            for (let i = 0; i < 3; i++) {
+                const mysteryGeo = new THREE.DodecahedronGeometry(2.0);
+                const mysteryMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xc084fc, emissiveIntensity: 0.9, wireframe: true });
+                const mystery = new THREE.Mesh(mysteryGeo, mysteryMat);
+                mystery.position.set((Math.random() - 0.5) * 180, 3.0, (Math.random() - 0.5) * 180);
+                scene.add(mystery);
+                mysteries.push(mystery);
+            }
+        }
+
+        function spawnExplorationGuards(count) {
+            for (let i = 0; i < count; i++) {
+                const group = new THREE.Group();
+                const bodyGeo = new THREE.CylinderGeometry(0.5, 0.4, 2.4, 8);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.6, roughness: 0.4 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.2;
+                group.add(body);
+
+                const eyeGeo = new THREE.SphereGeometry(0.2, 8, 8);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+                const eye = new THREE.Mesh(eyeGeo, eyeMat);
+                eye.position.set(0, 2.0, 0.3);
+                group.add(eye);
+
+                group.position.set((Math.random() - 0.5) * 220, 0, (Math.random() - 0.5) * 220);
+                scene.add(group);
+                enemies.push(group);
+            }
+        }
+
+        function initControls() {
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'KeyW': moveForward = true; break;
+                    case 'KeyS': moveBackward = true; break;
+                    case 'KeyA': moveLeft = true; break;
+                    case 'KeyD': moveRight = true; break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight':
+                        isShiftPressed = true;
+                        document.getElementById('sprint-status').innerText = "Sprinting (Controlled)";
+                        document.getElementById('sprint-status').className = "font-bold text-teal-300 animate-pulse";
+                        break;
+                    case 'Space':
+                        if (canJump === true) velocity.y += 8.0;
+                        canJump = false;
+                        break;
+                    case 'Digit1': switchWeapon(1); break;
+                    case 'Digit2': switchWeapon(2); break;
+                    case 'Digit3': switchWeapon(3); break;
+                }
+            };
+
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'KeyW': moveForward = false; break;
+                    case 'KeyS': moveBackward = false; break;
+                    case 'KeyA': moveLeft = false; break;
+                    case 'KeyD': moveRight = false; break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight':
+                        isShiftPressed = false;
+                        document.getElementById('sprint-status').innerText = "Normal (Hold Shift to Run)";
+                        document.getElementById('sprint-status').className = "font-bold text-purple-400";
+                        break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            document.addEventListener('mousedown', () => {
+                if (document.pointerLockElement === document.body) {
+                    isAttacking = true;
+                    attackAnimTimer = 0;
+                    playSound('sword');
+                    checkMeleeHit();
+                } else {
+                    document.body.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('mousemove', function (event) {
+                if (document.pointerLockElement === document.body) {
+                    let movementX = event.movementX || event.mozMovementX || event.fX || 0;
+                    let movementY = event.movementY || event.mozMovementY || event.fY || 0;
+
+                    camera.rotation.y -= movementX * 0.002;
+                    camera.rotation.x -= movementY * 0.002;
+                    camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                }
+            });
+        }
+
+        function checkMeleeHit() {
+            relics.forEach((relic, index) => {
+                if (camera.position.distanceTo(relic.position) < 6) {
+                    scene.remove(relic);
+                    relics.splice(index, 1);
+                    gameState.relics++;
+                    document.getElementById('relics-count').innerText = gameState.relics;
+                    playSound('relic');
+                    showCustomModal("Divine Relic Recovered", "You have unearthed an ancient artifact of The IAH Vajra. Prana resonance increased!");
+                }
+            });
+
+            mysteries.forEach((mystery, index) => {
+                if (camera.position.distanceTo(mystery.position) < 7) {
+                    scene.remove(mystery);
+                    mysteries.splice(index, 1);
+                    gameState.mysteries++;
+                    document.getElementById('mysteries-count').innerText = gameState.mysteries;
+                    playSound('mystery');
+                    showCustomModal("Celestial Mystery Unlocked", "You successfully decoded a cosmic anomaly across Sanctum Prime.");
+                }
+            });
+        }
+
+        function showCustomModal(title, desc) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-desc').innerText = desc;
+            document.getElementById('custom-modal').style.display = 'block';
+        }
+
+        function closeCustomModal() {
+            document.getElementById('custom-modal').style.display = 'none';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            const delta = Math.min((time - prevTime) / 1000, 0.1);
+
+            if (document.pointerLockElement === document.body) {
+                // AAA-Style Smooth Acceleration & Horizontal Yaw-Locked Movement
+                velocity.y -= 9.8 * 4.5 * delta; // balanced gravity
+
+                let acceleration = isShiftPressed ? 55.0 : 30.0;
+                let maxSpeed = isShiftPressed ? 22.0 : 12.0;
+
+                const yaw = camera.rotation.y;
+                const forwardDir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).negate();
+                const rightDir = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+                let moveZ = Number(moveForward) - Number(moveBackward);
+                let moveX = Number(moveRight) - Number(moveLeft);
+
+                if (moveZ !== 0 || moveX !== 0) {
+                    velocity.x += (rightDir.x * moveX + forwardDir.x * moveZ) * acceleration * delta;
+                    velocity.z += (rightDir.z * moveX + forwardDir.z * moveZ) * acceleration * delta;
+                }
+
+                // Friction damping
+                velocity.x *= 0.82;
+                velocity.z *= 0.82;
+
+                // Clamp to max speed
+                const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                if (currentSpeed > maxSpeed) {
+                    velocity.x = (velocity.x / currentSpeed) * maxSpeed;
+                    velocity.z = (velocity.z / currentSpeed) * maxSpeed;
+                }
+
+                camera.position.x += velocity.x * delta;
+                camera.position.z += velocity.z * delta;
+
+                camera.position.y += (velocity.y * delta);
+                if (camera.position.y < 2.5) {
+                    velocity.y = 0;
+                    camera.position.y = 2.5;
+                    canJump = true;
+                }
+            }
+
+            // Sword Attack Animation Swing
+            if (isAttacking) {
+                attackAnimTimer += delta * 14;
+                if (activeWeaponGroup.children[0]) {
+                    activeWeaponGroup.children[0].rotation.z = Math.sin(attackAnimTimer) * 0.9;
+                    activeWeaponGroup.children[0].position.z = -0.9 + Math.cos(attackAnimTimer) * 0.35;
+                }
+                if (attackAnimTimer > Math.PI) {
+                    isAttacking = false;
+                    attackAnimTimer = 0;
+                    if (activeWeaponGroup.children[0]) {
+                        activeWeaponGroup.children[0].rotation.z = 0;
+                        activeWeaponGroup.children[0].position.z = -0.9;
+                    }
+                }
+            }
+
+            // Float relics & mysteries
+            relics.forEach((r, idx) => {
+                r.rotation.y += delta * 2;
+                r.position.y = 1.5 + Math.sin(time * 0.003 + idx) * 0.5;
+            });
+
+            mysteries.forEach((m, idx) => {
+                m.rotation.x += delta;
+                m.rotation.y += delta * 1.5;
+            });
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
